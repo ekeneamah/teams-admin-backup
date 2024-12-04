@@ -15,7 +15,7 @@ namespace TeamsChatBackup
         // Configuration variables
         private static string clientId = "clientId";
         private static string tenantId = "tenantId";
-        private static string clientSecret = "clientSecret";
+        private static string clientS = "clientS";
         private static string graphEndpoint = "https://graph.microsoft.com/v1.0";
         private static HttpClient httpClient = new HttpClient();
         private static string token;
@@ -38,7 +38,7 @@ namespace TeamsChatBackup
 
             // Authenticate and get token
             // token = await GetGraphTokenAsync();
-            token = await GetApplicationTokenAsync(clientId, clientSecret, tenantId);
+            token = await GetApplicationTokenAsync(clientId, clientS, tenantId);
 
             // Fetch users
             var users = await FetchUsersAsync();
@@ -59,7 +59,7 @@ namespace TeamsChatBackup
         private static async Task<string> GetGraphTokenAsync()
         {
             var app = ConfidentialClientApplicationBuilder.Create(clientId)
-                .WithClientSecret(clientSecret)
+                .WithClientSecret(clientS)
                 .WithAuthority(new Uri($"https://login.microsoftonline.com/{tenantId}/oauth2/v2.0/token"))
                 .Build();
 

@@ -13,9 +13,9 @@ namespace TeamsChatBackup
     class Program
     {
         // Configuration variables
-        private static string clientId = "7b2a0005-9b14-4f96-95ad-1e48903b587e";
-        private static string tenantId = "d608fd7f-7df6-478a-865f-d71f81617609";
-        private static string clientSecret = "Jnj8Q~cRoBlBkODgMBJfbymilk.fsax8ppSfncnA";
+        private static string clientId = "clientId";
+        private static string tenantId = "tenantId";
+        private static string clientSecret = "clientSecret";
         private static string graphEndpoint = "https://graph.microsoft.com/v1.0";
         private static HttpClient httpClient = new HttpClient();
         private static string token;
@@ -142,8 +142,8 @@ namespace TeamsChatBackup
             string userId = user["id"].ToString();
 
             Console.WriteLine($"Processing user: {userName}");
-            if (user["id"].ToString() == "4e220cac-4b90-4a20-a58b-c3723b90fcab")
-            {
+           // if (user["id"].ToString() == "4e220cac-4b90-4a20-a58b-c3723b90fcab")
+            //{
 
                 // Create user directory
                 string userDirectory = Path.Combine(rootDirectory, SanitizeFileName(userName));
@@ -165,7 +165,7 @@ namespace TeamsChatBackup
                     }
                 }
 
-            }
+           // }
         }
 
         private static async Task<JArray> FetchUserChatsAsync(string userId)

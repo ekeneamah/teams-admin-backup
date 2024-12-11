@@ -5,6 +5,7 @@ using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Identity.Client;
 using Newtonsoft.Json.Linq;
 
@@ -12,33 +13,45 @@ namespace TeamsChatBackup
 {
     class Program
     {
+        private static IConfigurationRoot configuration;
+
         // Configuration variables
-        private static string clientId = "clientId";
-        private static string tenantId = "tenantId";
-        private static string clientS = "clientS";
+        private static string clientId;
+        private static string tenantId;
+        private static string clientSecret;
         private static string graphEndpoint = "https://graph.microsoft.com/v1.0";
         private static HttpClient httpClient = new HttpClient();
         private static string token;
         private static DateTime tokenExpiresOn;
+        private static int userChatCount = 0;
 
 
         static async Task Main(string[] args)
         {
             Console.WriteLine("Starting Teams Chat Backup...");
 
+            var builder = new ConfigurationBuilder()
+          .SetBasePath(AppContext.BaseDirectory) // Set the base path to where the app runs
+          .AddJsonFile("appsettings.json", optional: true, reloadOnChange: true); // Add appsettings.json
+            configuration = builder.Build();
+
+            // Read configuration values
+             clientId = configuration["AzureConfig:ClientId"];
+            tenantId = configuration["AzureConfig:TenantId"];
+            clientSecret = configuration["AzureConfig:ClientSecret"];
             // Ensure args are provided
             if (args.Length < 1)
             {
                 Console.WriteLine("Usage: TeamsChatBackup <BackupPath> [Days]");
-                return;
+                //return;
             }
 
-            string backupPath = args[0];
-            int days = args.Length > 1 ? int.Parse(args[1]) : 0;
+            string backupPath = configuration["BackupConfig:BackupPath"];
+            int days =  int.Parse(configuration["BackupConfig:Days"]);
 
             // Authenticate and get token
             // token = await GetGraphTokenAsync();
-            token = await GetApplicationTokenAsync(clientId, clientS, tenantId);
+            token = await GetApplicationTokenAsync(clientId, clientSecret, tenantId);
 
             // Fetch users
             var users = await FetchUsersAsync();
@@ -49,8 +62,10 @@ namespace TeamsChatBackup
             Directory.CreateDirectory(rootDirectory);
 
             foreach (var user in users)
-            { 
-                await BackupUserChatsAsync(user, rootDirectory, days);
+            {
+               
+                    await BackupUserChatsAsync(user, rootDirectory, days);
+                
             }
 
             Console.WriteLine("Backup completed!");
@@ -59,7 +74,7 @@ namespace TeamsChatBackup
         private static async Task<string> GetGraphTokenAsync()
         {
             var app = ConfidentialClientApplicationBuilder.Create(clientId)
-                .WithClientSecret(clientS)
+                .WithClientSecret(clientSecret)
                 .WithAuthority(new Uri($"https://login.microsoftonline.com/{tenantId}/oauth2/v2.0/token"))
                 .Build();
 
@@ -143,7 +158,7 @@ namespace TeamsChatBackup
 
             Console.WriteLine($"Processing user: {userName}");
            // if (user["id"].ToString() == "4e220cac-4b90-4a20-a58b-c3723b90fcab")
-            //{
+           // {
 
                 // Create user directory
                 string userDirectory = Path.Combine(rootDirectory, SanitizeFileName(userName));
@@ -152,20 +167,26 @@ namespace TeamsChatBackup
                 // Fetch chats for the user
                 var chats = await FetchUserChatsAsync(userId);
                 Console.WriteLine($"count user chats : {chats.Count}");
+                 userChatCount = chats.Count;
                 int i = 0;
                 foreach (var chat in chats)
                 {
-                    Console.WriteLine($"count user sn : {i++}");
+                   
                     string chatId = chat["id"].ToString();
-                    var messages = await FetchChatMessagesAsync(chatId, days);
+                    var messages = await FetchChatMessagesAsync(chatId, days,i);
 
                     if (messages.Count > 0)
                     {
-                        await SaveChatMessagesAsync(chat, messages, userDirectory);
-                    }
+                        await SaveChatMessagesAsync(chat, messages, userDirectory,i);
+                }
+                else
+                {
+                    await SaveEmptyChatMessagesAsync(chat, messages, userDirectory, i);
+                }
+ Console.WriteLine($"count user sn : {i++}");
                 }
 
-           // }
+            //ww}
         }
 
         private static async Task<JArray> FetchUserChatsAsync(string userId)
@@ -184,7 +205,7 @@ namespace TeamsChatBackup
 
                 var content = await response.Content.ReadAsStringAsync();
                 var jsonResponse = JObject.Parse(content);
-
+                
                 // Add current chats to the array
                 if (jsonResponse["value"] != null)
                 {
@@ -198,7 +219,7 @@ namespace TeamsChatBackup
             return chats;
         }
 
-        private static async Task<JArray> FetchChatMessagesAsync(string chatId, int days)
+        private static async Task<JArray> FetchChatMessagesAsync(string chatId, int days, int chatSn)
         {
             Console.WriteLine($"Fetching messages for chat {chatId}...");
             string fromDate = DateTime.UtcNow.AddDays(-days).ToString("o");
@@ -236,32 +257,46 @@ namespace TeamsChatBackup
             return messages;
         }
 
-        private static async Task SaveChatMessagesAsync(JToken chat, JArray messages, string userDirectory)
+        private static async Task SaveChatMessagesAsync(JToken chat, JArray messages, string userDirectory,int chatSn)
         {
-            string chatName = chat["topic"]?.ToString() ?? "Untitled Chat";
+            string chatName = chat["topic"] == null ? "UntitledChat" : chat["topic"].ToString() ?? "Untitled Chat";
+            chatName = chatName == "" ? "UnknownTitle" : chatName;
             Console.WriteLine($"Saving messages for chat: {chatName}");
 
             // Generate chat HTML
-            string chatHtml = GenerateChatHtml(chatName, messages);
+            string chatHtml = GenerateChatHtml(chatName, messages, chatSn);
 
             // Save to file
-            string filePath = Path.Combine(userDirectory, $"{SanitizeFileName(chatName)}.html");
+            string filePath = Path.Combine(userDirectory, $"{SanitizeFileName(chatName)}_{chatSn + 1}.html");
+            await File.WriteAllTextAsync(filePath, chatHtml);
+        }
+        private static async Task SaveEmptyChatMessagesAsync(JToken chat, JArray messages, string userDirectory, int chatSn)
+        {
+            string chatName = chat["topic"] == null ? "UntitledChat" : chat["topic"].ToString() ?? "Untitled Chat";
+            chatName = chatName == "" ? "UnknownTitle" : chatName;
+            Console.WriteLine($"Saving messages for chat: {chatName}");
+
+            // Generate chat HTML
+            string chatHtml = "No message for this chat";
+
+            // Save to file
+            string filePath = Path.Combine(userDirectory, $"{SanitizeFileName(chatName)}_{chatSn + 1}.html");
             await File.WriteAllTextAsync(filePath, chatHtml);
         }
 
-        private static string GenerateChatHtml(string chatName, JArray messages)
+        private static string GenerateChatHtml(string chatName, JArray messages,int chatSn)
         {
             var sb = new StringBuilder();
             sb.AppendLine("<html><head><title>Teams Chat Backup</title></head><body>");
-            sb.AppendLine($"<h1>{chatName}</h1>");
+            sb.AppendLine($"<h1>{chatName}</h1> <small>messages on Chat {chatSn + 1 } of {userChatCount}</small>");
 
             foreach (var message in messages)
             {
-                string sender = message["from"]["user"]["displayName"]?.ToString() ?? "Unknown";
+                string sender = message["from"] == null ? "NA": message["from"]?.ToString() ?? message["from"]["user"]["displayName"]?.ToString() ?? "Unknown";
                 string content = message["body"]["content"]?.ToString() ?? "No Content";
                 string timestamp = message["createdDateTime"]?.ToString() ?? "Unknown Date";
 
-                sb.AppendLine($"<div><strong>{sender}</strong> ({timestamp}): {content}</div>");
+                sb.AppendLine($"<div style='border:1 solid blue; margin-bottom:5px'><strong>sender: {sender}</strong> (createdDateTime: {timestamp}): message: {content}</div><hr>");
             }
 
             sb.AppendLine("</body></html>");
